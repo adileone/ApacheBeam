@@ -74,7 +74,7 @@ public class MlbPipeline {
     options.setStagingLocation("gs://beambinaries/binaries");
     options.setRunner(DataflowRunner.class);
 
-    // For DirectRunner
+    // // For DirectRunner
     // PipelineOptions options = PipelineOptionsFactory.create();
 
     // Create the Pipeline with the specified options.
@@ -86,7 +86,7 @@ public class MlbPipeline {
 
     PCollection<KV<String, Team>> teams = p
 
-        .apply(JdbcIO.<KV<String, Team>>read().withDataSourceConfiguration(mysqlConfig)
+        .apply("Read Teams from MySql DB",JdbcIO.<KV<String, Team>>read().withDataSourceConfiguration(mysqlConfig)
             .withQuery("SELECT * FROM mlb_teams").withCoder(KvCoder.of(StringUtf8Coder.of(), AvroCoder.of(Team.class)))
             .withRowMapper(new JdbcIO.RowMapper<KV<String, Team>>() {
               private static final long serialVersionUID = 1L;
@@ -99,7 +99,7 @@ public class MlbPipeline {
 
     PCollection<KV<String, Player>> players = p
 
-        .apply(TextIO.read().from("gs://mls-bucket/mlb_players.csv"))
+        .apply("Read Players from CSV in bucket",TextIO.read().from("gs://mls-bucket/mlb_players.csv"))
         .apply("Remove header row", Filter.by((String row) -> !(row.startsWith("\"Name\","))))
         .apply("Remove empty rows", Filter.by((new SerializableFunction<String, Boolean>() {
           private static final long serialVersionUID = 1L;
@@ -112,7 +112,7 @@ public class MlbPipeline {
           }
         }
 
-        ))).apply(ParDo.of(new DoFn<String, KV<String, Player>>() {
+        ))).apply("Prepare Join Player",ParDo.of(new DoFn<String, KV<String, Player>>() {
           private static final long serialVersionUID = 1L;
 
           @ProcessElement
@@ -136,9 +136,9 @@ public class MlbPipeline {
     final TupleTag<Player> playersTag = new TupleTag<>();
 
     PCollection<KV<String, CoGbkResult>> joined = KeyedPCollectionTuple.of(playersTag, players).and(teamsTag, teams)
-        .apply(CoGroupByKey.create());
+        .apply("Execute Join", CoGroupByKey.create());
     
-    PDone res1 = joined.apply(ParDo.of(new DoFn<KV<String, CoGbkResult>, String>() {
+    PDone res1 = joined.apply("Prepare first goal",ParDo.of(new DoFn<KV<String, CoGbkResult>, String>() {
 
       private static final long serialVersionUID = 1L;
 
@@ -153,9 +153,9 @@ public class MlbPipeline {
         }
       }
     }))
-    .apply(TextIO.write().to("/media/alessandro/storage/EsercizioBeam/output.txt"));
+    .apply("Write Result1",TextIO.write().to("gs://mlb_results1"));
 
-    PDone res2 = joined.apply(ParDo.of(new DoFn<KV<String, CoGbkResult>, KV<String, Double>>() {
+    PDone res2 = joined.apply("Preparing KV for aggregation",ParDo.of(new DoFn<KV<String, CoGbkResult>, KV<String, Double>>() {
 
       private static final long serialVersionUID = 1L;
 
@@ -170,8 +170,8 @@ public class MlbPipeline {
         }
       }
     }))
-    .apply(Mean.perKey())
-    .apply(ParDo.of(new DoFn<KV<String, Double>, String>() {
+    .apply("Compute average height", Mean.perKey())
+    .apply("Prepare second goal", ParDo.of(new DoFn<KV<String, Double>, String>() {
 
       private static final long serialVersionUID = 1L;
 
@@ -181,7 +181,7 @@ public class MlbPipeline {
           ctx.output(ctx.element().getKey()+"-->"+ctx.element().getValue());
         }
       }))
-    .apply(TextIO.write().to("/media/alessandro/storage/EsercizioBeam/output2.txt"));
+    .apply("Write Result2",TextIO.write().to("gs://mlb_results2"));
 
     // Check pipeline status
     p.run().waitUntilFinish();
