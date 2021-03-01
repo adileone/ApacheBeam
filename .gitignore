@@ -2,4 +2,5 @@
 .setting
 .classpath
 .project
-target/*
+mlb_pipeline/target/*
+mlb_pipeline/.setting*
