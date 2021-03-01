@@ -3,8 +3,8 @@ package org.apache.beam.examples;
 import java.sql.ResultSet;
 import java.util.HashMap;
 
-// import org.apache.beam.runners.dataflow.DataflowRunner;
-// import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
+import org.apache.beam.runners.dataflow.DataflowRunner;
+import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.coders.AvroCoder;
 import org.apache.beam.sdk.coders.KvCoder;
@@ -64,17 +64,18 @@ public class MlbPipeline {
     names.put("SF", "Giants");
     names.put("STL", "Cardinals");
 
-    // // Create and set your PipelineOptions.
-    // DataflowPipelineOptions options =
-    // PipelineOptionsFactory.as(DataflowPipelineOptions.class);
+    // Create and set your PipelineOptions.
+    DataflowPipelineOptions options =
+    PipelineOptionsFactory.as(DataflowPipelineOptions.class);
 
-    // // For Cloud execution, set the Cloud Platform project, staging location,
-    // // and specify DataflowRunner.
-    // options.setProject("exemplary-works-305313");
-    // options.setStagingLocation("gs://beambinaries/binaries");
-    // options.setRunner(DataflowRunner.class);
+    // For Cloud execution, set the Cloud Platform project, staging location,
+    // and specify DataflowRunner.
+    options.setProject("exemplary-works-305313");
+    options.setStagingLocation("gs://beambinaries/binaries");
+    options.setRunner(DataflowRunner.class);
 
-    PipelineOptions options = PipelineOptionsFactory.create();
+    // For DirectRunner
+    // PipelineOptions options = PipelineOptionsFactory.create();
 
     // Create the Pipeline with the specified options.
     Pipeline p = Pipeline.create(options);
