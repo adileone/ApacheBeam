@@ -1,32 +1,16 @@
 package org.apache.beam.examples;
 
-import java.sql.ResultSet;
 import java.util.HashMap;
 
 import org.apache.beam.runners.dataflow.DataflowRunner;
 import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 import org.apache.beam.sdk.Pipeline;
-import org.apache.beam.sdk.coders.AvroCoder;
-import org.apache.beam.sdk.coders.KvCoder;
-import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.io.TextIO;
-import org.apache.beam.sdk.io.jdbc.JdbcIO;
-import org.apache.beam.sdk.io.jdbc.JdbcIO.DataSourceConfiguration;
-import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.Filter;
-import org.apache.beam.sdk.transforms.Mean;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.SerializableFunction;
-import org.apache.beam.sdk.transforms.join.CoGbkResult;
-import org.apache.beam.sdk.transforms.join.CoGroupByKey;
-import org.apache.beam.sdk.transforms.join.KeyedPCollectionTuple;
-import org.apache.beam.sdk.values.KV;
-import org.apache.beam.sdk.values.PCollection;
-import org.apache.beam.sdk.values.PDone;
-import org.apache.beam.sdk.values.TupleTag;
-import org.apache.beam.sdk.values.TupleTagList;
 
 public class MlbPipeline {
 
@@ -64,42 +48,29 @@ public class MlbPipeline {
     names.put("SF", "Giants");
     names.put("STL", "Cardinals");
 
-    // Create and set your PipelineOptions.
     DataflowPipelineOptions options =
-    PipelineOptionsFactory.as(DataflowPipelineOptions.class);
+          PipelineOptionsFactory.fromArgs(args).withValidation()
+            .as(DataflowPipelineOptions.class);
+    Pipeline p = Pipeline.create(options);
+
+    // Create and set your PipelineOptions.
+    // DataflowPipelineOptions options = PipelineOptionsFactory.as(DataflowPipelineOptions.class);
 
     // For Cloud execution, set the Cloud Platform project, staging location,
     // and specify DataflowRunner.
-    options.setProject("exemplary-works-305313");
-    options.setStagingLocation("gs://beambinaries/binaries");
-    options.setRunner(DataflowRunner.class);
+    // options.setProject("exemplary-works-305313");
+    // options.setStagingLocation("gs://beambinaries/binaries");
+    // options.setRunner(DataflowRunner.class);
+    // options.setRegion("europe-west6");
+    // options.setGcpTempLocation("gs://beambinaries/binaries");
 
     // // For DirectRunner
     // PipelineOptions options = PipelineOptionsFactory.create();
 
     // Create the Pipeline with the specified options.
-    Pipeline p = Pipeline.create(options);
+    // Pipeline p = Pipeline.create(options);
 
-    DataSourceConfiguration mysqlConfig = JdbcIO.DataSourceConfiguration
-        .create("com.mysql.cj.jdbc.Driver", "jdbc:mysql://35.204.50.197:3306/mls_db").withUsername("root")
-        .withPassword("root");
-
-    PCollection<KV<String, Team>> teams = p
-
-        .apply("Read Teams from MySql DB",JdbcIO.<KV<String, Team>>read().withDataSourceConfiguration(mysqlConfig)
-            .withQuery("SELECT * FROM mlb_teams").withCoder(KvCoder.of(StringUtf8Coder.of(), AvroCoder.of(Team.class)))
-            .withRowMapper(new JdbcIO.RowMapper<KV<String, Team>>() {
-              private static final long serialVersionUID = 1L;
-
-              public KV<String, Team> mapRow(ResultSet resultSet) throws Exception {
-                Team team = new Team(resultSet.getString(1), resultSet.getDouble(2), resultSet.getDouble(3));
-                return KV.of(team.getName(), team);
-              }
-            }));
-
-    PCollection<KV<String, Player>> players = p
-
-        .apply("Read Players from CSV in bucket",TextIO.read().from("gs://mls-bucket/mlb_players.csv"))
+    p.apply("Read Players from CSV in bucket", TextIO.read().from("gs://mls-bucket/mlb_players.csv"))
         .apply("Remove header row", Filter.by((String row) -> !(row.startsWith("\"Name\","))))
         .apply("Remove empty rows", Filter.by((new SerializableFunction<String, Boolean>() {
           private static final long serialVersionUID = 1L;
@@ -112,7 +83,7 @@ public class MlbPipeline {
           }
         }
 
-        ))).apply("Prepare Join Player",ParDo.of(new DoFn<String, KV<String, Player>>() {
+        ))).apply("Prepare Join Player", ParDo.of(new DoFn<String, String>() {
           private static final long serialVersionUID = 1L;
 
           @ProcessElement
@@ -128,60 +99,9 @@ public class MlbPipeline {
             Double age = parseDouble(split[5]);
 
             Player player = new Player(name, team, position, height, weight, age);
-            ctx.output(KV.of(player.getTeam(), player));
+            ctx.output(player.getTeam() + "---->" + player.toString());
           }
-        }));
-
-    final TupleTag<Team> teamsTag = new TupleTag<>();
-    final TupleTag<Player> playersTag = new TupleTag<>();
-
-    PCollection<KV<String, CoGbkResult>> joined = KeyedPCollectionTuple.of(playersTag, players).and(teamsTag, teams)
-        .apply("Execute Join", CoGroupByKey.create());
-    
-    PDone res1 = joined.apply("Prepare first goal",ParDo.of(new DoFn<KV<String, CoGbkResult>, String>() {
-
-      private static final long serialVersionUID = 1L;
-
-      @ProcessElement
-      public void processElement(ProcessContext ctx) {
-
-        Iterable<Player> players = ctx.element().getValue().getAll(playersTag);
-        Team team = ctx.element().getValue().getOnly(teamsTag);
-
-        for (Player p : players) {
-          ctx.output(p.toString() + " -> " + team.toString());
-        }
-      }
-    }))
-    .apply("Write Result1",TextIO.write().to("gs://mlb_results1"));
-
-    PDone res2 = joined.apply("Preparing KV for aggregation",ParDo.of(new DoFn<KV<String, CoGbkResult>, KV<String, Double>>() {
-
-      private static final long serialVersionUID = 1L;
-
-      @ProcessElement
-      public void processElement(ProcessContext ctx) {
-
-        Iterable<Player> players = ctx.element().getValue().getAll(playersTag);
-        Team team = ctx.element().getValue().getOnly(teamsTag);
-
-        for (Player p : players) {
-          ctx.output(KV.of(p.getTeam(), p.getHeight()));
-        }
-      }
-    }))
-    .apply("Compute average height", Mean.perKey())
-    .apply("Prepare second goal", ParDo.of(new DoFn<KV<String, Double>, String>() {
-
-      private static final long serialVersionUID = 1L;
-
-      @ProcessElement
-      public void processElement(ProcessContext ctx) {
-
-          ctx.output(ctx.element().getKey()+"-->"+ctx.element().getValue());
-        }
-      }))
-    .apply("Write Result2",TextIO.write().to("gs://mlb_results2"));
+        })).apply("Write Result1", TextIO.write().to("gs://mlb_results1"));
 
     // Check pipeline status
     p.run().waitUntilFinish();
