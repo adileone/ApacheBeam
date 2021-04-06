@@ -2,7 +2,6 @@ package org.apache.beam.examples;
 
 import java.util.HashMap;
 
-import org.apache.beam.runners.dataflow.DataflowRunner;
 import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.TextIO;
