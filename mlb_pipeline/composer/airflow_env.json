@@ -1,5 +1,5 @@
 {
-	"bucket_path": "gs://mlb-composer-test/tmp",
+	"bucket_path": "mls-bucket",
 	"project_id": "exemplary-works-305313",
 	"gce_zone": "europe-west6",
 	"gce_region": "europe-west6-a"
