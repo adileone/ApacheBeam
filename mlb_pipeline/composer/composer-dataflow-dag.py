@@ -1,4 +1,6 @@
 import datetime
+import logging
+
 from base64 import b64encode
 
 from airflow import models
@@ -6,6 +8,8 @@ from airflow.contrib.operators.dataflow_operator import DataflowTemplateOperator
 from airflow.utils.dates import days_ago
 from airflow.operators.bash_operator import BashOperator
 from airflow.contrib.sensors.pubsub_sensor import PubSubPullSensor
+from airflow.operators.python_operator import PythonOperator
+
 
 bucket_path = models.Variable.get("bucket_path")
 project_id = models.Variable.get("project_id")
@@ -46,8 +50,25 @@ with models.DAG(
     subscription = 'test-sub'  # Cloud Pub/Sub subscription
 
     t4 = PubSubPullSensor(task_id='pull-messages', ack_messages=True, project=project_id, subscription=subscription)
-    t5 = BashOperator(task_id='echo-pulled-messages',
-                      bash_command=echo_template)
+
+    def print_context(**kwargs):
+
+        encoded = kwargs['ti'].xcom_pull(key="return_value")
+        logging.info(encoded)
+        
+        kwargs['ti'].xcom_push(key="message", value="message")
+        return "message pushed to Xcom"
+
+
+    t5 = PythonOperator(
+        task_id='decode_message',
+        python_callable=print_context,
+        provide_context=True,
+        dag=dag,
+    )
+
+    # t5 = BashOperator(task_id='echo-pulled-messages',
+    #                   bash_command=echo_template)
 
     # start_template_job = DataflowTemplateOperator(
     #     # The task id of your job
@@ -68,4 +89,4 @@ with models.DAG(
     #     # },
     # )
 
-    (t4 >> t5) #>> start_template_job
+    (t4)# >> t5) #>> start_template_job
