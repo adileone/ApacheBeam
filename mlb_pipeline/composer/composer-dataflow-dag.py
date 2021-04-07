@@ -1,5 +1,4 @@
 import datetime
-# import json
 
 from airflow import models
 from airflow.contrib.operators.dataflow_operator import DataflowTemplateOperator
@@ -8,6 +7,10 @@ from airflow.operators.bash_operator import BashOperator
 from airflow.contrib.sensors.pubsub_sensor import PubSubPullSensor
 from airflow.operators.python_operator import PythonOperator
 
+from google.cloud import storage
+from zipfile import ZipFile
+from zipfile import is_zipfile
+import io
 
 bucket_path = models.Variable.get("bucket_path")
 project_id = models.Variable.get("project_id")
@@ -47,21 +50,27 @@ with models.DAG(
 
     subscription = 'test-sub'  # Cloud Pub/Sub subscription
 
-    t4 = PubSubPullSensor(task_id='pull-messages', ack_messages=True, project=project_id, subscription=subscription, max_messages=1500)
+    t4 = PubSubPullSensor(task_id='pull-messages', ack_messages=True, project=project_id, subscription=subscription, max_messages=1000)
 
     def print_context(**kwargs):
 
         encoded = kwargs['ti'].xcom_pull(task_ids='pull-messages', key="return_value")
-        # json_encoded = json.loads(encoded)
-        i=0
+        
+        l=[]
+        
         for m in encoded :
             value = m["message"]["attributes"]["objectId"]
-            kwargs['ti'].xcom_push(key="message_"+str(i), value=value)
-            i=i+1
-        
-        # kwargs['ti'].xcom_push(key="message", value="message")
-        return "message"
+            l.append(value)
 
+        result = ",".join(map(str, l))
+
+        # i=0
+        # for m in encoded :
+        #     value = m["message"]["attributes"]["objectId"]
+        #     kwargs['ti'].xcom_push(key="message_"+str(i), value=value)
+        #     i=i+1
+        
+        return result
 
     t5 = PythonOperator(
         task_id='decode_message',
@@ -69,6 +78,36 @@ with models.DAG(
         provide_context=True,
         dag=dag,
     )
+
+    def zipextract(bucketname, **kwargs):
+
+        storage_client = storage.Client(project=project_id )
+        bucket = storage_client.get_bucket(bucketname)
+
+        encoded = kwargs['ti'].xcom_pull(task_ids='decode_message')
+
+        zipfilename_with_path = encoded.split(',')[0]
+        destination_blob_pathname = zipfilename_with_path
+
+        blob = bucket.blob(destination_blob_pathname)
+        zipbytes = io.BytesIO(blob.download_as_string())
+
+        if is_zipfile(zipbytes):
+            with ZipFile(zipbytes, 'r') as myzip:
+                for contentfilename in myzip.namelist():
+                    contentfile = myzip.read(contentfilename)
+                    blob = bucket.blob(zipfilename_with_path + "/" + contentfilename)
+                    blob.upload_from_string(contentfile)
+
+    t6 = PythonOperator(
+        task_id='unzip_archive',
+        python_callable=zipextract,
+        op_kwargs={'bucketname': bucket_path},
+        provide_context=True,
+        dag=dag,
+    )                
+
+
 
     # t5 = BashOperator(task_id='echo-pulled-messages',
     #                   bash_command=echo_template)
@@ -92,4 +131,4 @@ with models.DAG(
     #     # },
     # )
 
-    (t4 >> t5) #>> start_template_job
+    (t4 >> t5 >> t6) #>> start_template_job
