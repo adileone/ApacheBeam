@@ -100,7 +100,7 @@ with models.DAG(
                     blob = bucket.blob(zipfilename_with_path + "/" + contentfilename)
                     blob.upload_from_string(contentfile)
 
-        return zipfilename_with_path + "/" + contentfilename             
+        return "gs://"+bucket_path+"/"+zipfilename_with_path + "/" + contentfilename             
 
     t6 = PythonOperator(
         task_id='unzip_archive',
@@ -115,7 +115,8 @@ with models.DAG(
 
     start_template_job = DataflowTemplateOperator(
         # The task id of your job
-        task_id="dataflow_operator_run_pipeline_asap",
+        task_id="dataflow_operator_run_pipeline",
+        job_name='mlb_composer_job',
         # The name of the template that you're using.
         # Below is a list of all the templates you can use.
         # For versions in non-production environments, use the subfolder 'latest'
@@ -123,7 +124,7 @@ with models.DAG(
         template="gs://beambinaries/templates/customTemplate1",
         # Use the link above to specify the correct parameters for your template.
         parameters={
-            "input": "{% task_instance.xcom_pull(task_ids='unzip_archive') %}",
+            "input": "{{ task_instance.xcom_pull(task_ids='unzip_archive') }}",
         },
     )
 
