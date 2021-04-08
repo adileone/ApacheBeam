@@ -124,7 +124,7 @@ with models.DAG(
         template="gs://beambinaries/templates/customTemplate1",
         # Use the link above to specify the correct parameters for your template.
         parameters={
-            "input": "{{ task_instance.xcom_pull(task_ids='unzip_archive') }}",
+            "inputFile": "{{ task_instance.xcom_pull(task_ids='unzip_archive') }}",
         },
     )
 
