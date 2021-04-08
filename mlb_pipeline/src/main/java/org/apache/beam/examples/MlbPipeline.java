@@ -12,7 +12,7 @@ import org.apache.beam.sdk.transforms.Filter;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.SerializableFunction;
 
-// mvn compile exec:java -Dexec.mainClass=org.apache.beam.examples.MlbPipeline -Dexec.args="--runner=DataflowRunner --project=exemplary-works-305313 --stagingLocation=gs://beambinaries/staging --templateLocation=gs://beambinaries/templates/customTemplate1 --region=europe-west6"
+// mvn compile exec:java -Dexec.mainClass=org.apache.beam.examples.MlbPipeline -Dexec.args="--runner=DataflowRunner --project=exemplary-works-305313 --stagingLocation=gs://beambinaries/staging --templateLocation=gs://beambinaries/templates/customTemplate1 --region=europe-west6 --input=default"
 
 public class MlbPipeline {
 
