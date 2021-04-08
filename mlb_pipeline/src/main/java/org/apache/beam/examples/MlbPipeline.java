@@ -6,17 +6,28 @@ import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.TextIO;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
+import org.apache.beam.sdk.options.ValueProvider;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.Filter;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.SerializableFunction;
 
-
-// mvn compile exec:java -Dexec.mainClass=org.apache.beam.examples.MlbPipeline -Dexec.args="--runner=DataflowRunner --project=exemplary-works-305313 --stagingLocation=gs://beambinaries/staging --templateLocation=gs://beambinaries/templates/customTemplate --region=europe-west6"
+// mvn compile exec:java -Dexec.mainClass=org.apache.beam.examples.MlbPipeline -Dexec.args="--runner=DataflowRunner --project=exemplary-works-305313 --stagingLocation=gs://beambinaries/staging --templateLocation=gs://beambinaries/templates/customTemplate1 --region=europe-west6"
 
 public class MlbPipeline {
 
+  public interface MyOptions extends DataflowPipelineOptions {
+
+    ValueProvider<String> getInput();
+
+    void setInput(ValueProvider<String> value);
+  }
+
   public static void main(String[] args) {
+    runPipeline(args);
+  }
+
+  public static void runPipeline(String[] args) {
 
     HashMap<String, String> names = new HashMap<>();
     names.put("BAL", "Orioles");
@@ -50,13 +61,12 @@ public class MlbPipeline {
     names.put("SF", "Giants");
     names.put("STL", "Cardinals");
 
-    DataflowPipelineOptions options =
-          PipelineOptionsFactory.fromArgs(args).withValidation()
-            .as(DataflowPipelineOptions.class);
+    MyOptions options = PipelineOptionsFactory.fromArgs(args).withValidation().as(MyOptions.class);
     Pipeline p = Pipeline.create(options);
 
     // Create and set your PipelineOptions.
-    // DataflowPipelineOptions options = PipelineOptionsFactory.as(DataflowPipelineOptions.class);
+    // DataflowPipelineOptions options =
+    // PipelineOptionsFactory.as(DataflowPipelineOptions.class);
 
     // For Cloud execution, set the Cloud Platform project, staging location,
     // and specify DataflowRunner.
@@ -72,7 +82,9 @@ public class MlbPipeline {
     // Create the Pipeline with the specified options.
     // Pipeline p = Pipeline.create(options);
 
-    p.apply("Read Players from CSV in bucket", TextIO.read().from("gs://mls-bucket/mlb_players.csv"))
+    // p.apply("Read Players from CSV in
+    // bucket",TextIO.read().from("gs://mls-bucket/mlb_players.csv"))
+    p.apply("Read Players from CSV in bucket", TextIO.read().from(options.getInput().get()))
         .apply("Remove header row", Filter.by((String row) -> !(row.startsWith("\"Name\","))))
         .apply("Remove empty rows", Filter.by((new SerializableFunction<String, Boolean>() {
           private static final long serialVersionUID = 1L;

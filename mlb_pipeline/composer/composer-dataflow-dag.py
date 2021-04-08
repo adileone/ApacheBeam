@@ -50,19 +50,19 @@ with models.DAG(
 
     subscription = 'test-sub'  # Cloud Pub/Sub subscription
 
-    t4 = PubSubPullSensor(task_id='pull-messages', ack_messages=True, project=project_id, subscription=subscription, max_messages=1000)
+    t4 = PubSubPullSensor(task_id='pull-messages', ack_messages=True, project=project_id, subscription=subscription, max_messages=1)
 
     def print_context(**kwargs):
 
         encoded = kwargs['ti'].xcom_pull(task_ids='pull-messages', key="return_value")
         
-        l=[]
+        # l=[]
         
-        for m in encoded :
-            value = m["message"]["attributes"]["objectId"]
-            l.append(value)
+        # for m in encoded :
+        #     value = m["message"]["attributes"]["objectId"]
+        #     l.append(value)
 
-        result = ",".join(map(str, l))
+        # result = ",".join(map(str, l))
 
         # i=0
         # for m in encoded :
@@ -70,7 +70,7 @@ with models.DAG(
         #     kwargs['ti'].xcom_push(key="message_"+str(i), value=value)
         #     i=i+1
         
-        return result
+        return encoded[0]["message"]["attributes"]["objectId"]
 
     t5 = PythonOperator(
         task_id='decode_message',
@@ -86,7 +86,8 @@ with models.DAG(
 
         encoded = kwargs['ti'].xcom_pull(task_ids='decode_message')
 
-        zipfilename_with_path = encoded.split(',')[0]
+        # zipfilename_with_path = encoded.split(',')[0]
+        zipfilename_with_path = encoded
         destination_blob_pathname = zipfilename_with_path
 
         blob = bucket.blob(destination_blob_pathname)
@@ -99,6 +100,8 @@ with models.DAG(
                     blob = bucket.blob(zipfilename_with_path + "/" + contentfilename)
                     blob.upload_from_string(contentfile)
 
+        return zipfilename_with_path + "/" + contentfilename             
+
     t6 = PythonOperator(
         task_id='unzip_archive',
         python_callable=zipextract,
@@ -107,28 +110,21 @@ with models.DAG(
         dag=dag,
     )                
 
-
-
     # t5 = BashOperator(task_id='echo-pulled-messages',
     #                   bash_command=echo_template)
 
-    # start_template_job = DataflowTemplateOperator(
-    #     # The task id of your job
-    #     task_id="dataflow_operator_run_pipeline_asap",
-    #     # The name of the template that you're using.
-    #     # Below is a list of all the templates you can use.
-    #     # For versions in non-production environments, use the subfolder 'latest'
-    #     # https://cloud.google.com/dataflow/docs/guides/templates/provided-batch#gcstexttobigquery
-    #     template="gs://beambinaries/templates/customTemplate",
-    #     # Use the link above to specify the correct parameters for your template.
-    #     # parameters={
-    #     #     "javascriptTextTransformFunctionName": "transformCSVtoJSON",
-    #     #     "JSONPath": bucket_path + "/jsonSchema.json",
-    #     #     "javascriptTextTransformGcsPath": bucket_path + "/transformCSVtoJSON.js",
-    #     #     "inputFilePattern": bucket_path + "/inputFile.txt",
-    #     #     "outputTable": project_id + ":average_weather.average_weather",
-    #     #     "bigQueryLoadingTemporaryDirectory": bucket_path + "/tmp/",
-    #     # },
-    # )
+    start_template_job = DataflowTemplateOperator(
+        # The task id of your job
+        task_id="dataflow_operator_run_pipeline_asap",
+        # The name of the template that you're using.
+        # Below is a list of all the templates you can use.
+        # For versions in non-production environments, use the subfolder 'latest'
+        # https://cloud.google.com/dataflow/docs/guides/templates/provided-batch#gcstexttobigquery
+        template="gs://beambinaries/templates/customTemplate1",
+        # Use the link above to specify the correct parameters for your template.
+        parameters={
+            "input": "{% task_instance.xcom_pull(task_ids='unzip_archive') %}",
+        },
+    )
 
-    (t4 >> t5 >> t6) #>> start_template_job
+    (t4 >> t5 >> t6 >> start_template_job)
