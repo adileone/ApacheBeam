@@ -5,26 +5,26 @@ import java.util.HashMap;
 import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.TextIO;
+import org.apache.beam.sdk.options.Default;
+import org.apache.beam.sdk.options.Description;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.options.ValueProvider;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.Filter;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.SerializableFunction;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 // mvn compile exec:java -Dexec.mainClass=org.apache.beam.examples.MlbPipeline -Dexec.args="--runner=DataflowRunner --project=exemplary-works-305313 --stagingLocation=gs://beambinaries/staging --templateLocation=gs://beambinaries/templates/customTemplate1 --region=europe-west6 --input=default"
 
 public class MlbPipeline {
 
-  private final static Logger logger = LoggerFactory.getLogger(MlbPipeline.class);
-
   public interface MyOptions extends DataflowPipelineOptions {
 
-    ValueProvider<String> getInput();
+    @Description("Path of the file to read from")
+    // @Default.String("gs://mls-bucket/mlb_players.csv")
+    ValueProvider<String> getInputFile();
 
-    void setInput(ValueProvider<String> value);
+    void setInputFile(ValueProvider<String> value);
   }
 
   public static void main(String[] args) {
@@ -32,8 +32,6 @@ public class MlbPipeline {
   }
 
   public static void runPipeline(String[] args) {
-
-    logger.info("Starting MLB_Pipeline...");
 
     HashMap<String, String> names = new HashMap<>();
     names.put("BAL", "Orioles");
@@ -91,8 +89,7 @@ public class MlbPipeline {
     // p.apply("Read Players from CSV in
     // bucket",TextIO.read().from("gs://mls-bucket/mlb_players.csv"))
 
-    String inputFile = options.getInput().get();
-    logger.info("Input file: " + inputFile);
+    ValueProvider<String> inputFile = options.getInputFile();
 
     p.apply("Read Players from CSV in bucket", TextIO.read().from(inputFile))
         .apply("Remove header row", Filter.by((String row) -> !(row.startsWith("\"Name\","))))
