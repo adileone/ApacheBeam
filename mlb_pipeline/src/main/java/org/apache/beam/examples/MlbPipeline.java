@@ -11,10 +11,14 @@ import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.Filter;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.SerializableFunction;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // mvn compile exec:java -Dexec.mainClass=org.apache.beam.examples.MlbPipeline -Dexec.args="--runner=DataflowRunner --project=exemplary-works-305313 --stagingLocation=gs://beambinaries/staging --templateLocation=gs://beambinaries/templates/customTemplate1 --region=europe-west6 --input=default"
 
 public class MlbPipeline {
+
+  private final static Logger logger = LoggerFactory.getLogger(MlbPipeline.class);
 
   public interface MyOptions extends DataflowPipelineOptions {
 
@@ -28,6 +32,8 @@ public class MlbPipeline {
   }
 
   public static void runPipeline(String[] args) {
+
+    logger.info("Starting MLB_Pipeline...");
 
     HashMap<String, String> names = new HashMap<>();
     names.put("BAL", "Orioles");
@@ -84,7 +90,11 @@ public class MlbPipeline {
 
     // p.apply("Read Players from CSV in
     // bucket",TextIO.read().from("gs://mls-bucket/mlb_players.csv"))
-    p.apply("Read Players from CSV in bucket", TextIO.read().from(options.getInput().get()))
+
+    String inputFile = options.getInput().get();
+    logger.info("Input file: " + inputFile);
+
+    p.apply("Read Players from CSV in bucket", TextIO.read().from(inputFile))
         .apply("Remove header row", Filter.by((String row) -> !(row.startsWith("\"Name\","))))
         .apply("Remove empty rows", Filter.by((new SerializableFunction<String, Boolean>() {
           private static final long serialVersionUID = 1L;
