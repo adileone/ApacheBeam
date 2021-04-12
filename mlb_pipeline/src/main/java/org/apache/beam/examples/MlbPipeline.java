@@ -102,7 +102,7 @@ public class MlbPipeline {
 
     ValueProvider<String> inputFile = options.getInputFile();
 
-    String header = "Name,Team,Position,Height(inches),Weight(lbs),Age";
+    String header = "Name,Team,Position,Height,Weight,Age";
 
     p.apply("Read Players from CSV in bucket", TextIO.read().from(inputFile))
         .apply("Remove header row", Filter.by((String row) -> !(row.startsWith("\"Name\","))))
@@ -132,8 +132,8 @@ public class MlbPipeline {
             Double weight = parseDouble(split[4]);
             Double age = parseDouble(split[5]);
 
-            // Player player = new Player(name, team, position, height, weight, age);
-            ctx.output(name + ","+ team + ","+ position+","+height+","+weight+","+age);
+            Player player = new Player(name, team, position, height, weight, age);
+            ctx.output(player.getName()+","+player.getTeam()+","+player.getPosition()+","+player.getHeight()+","+player.getWeight()+","+player.getAge());
           }
         })).apply("ConverToBqRow", ParDo.of(new StringToRowConverter(header))).apply("WriteToBq",
             BigQueryIO.writeTableRows().to(options.getOutputTable()).withWriteDisposition(WriteDisposition.WRITE_APPEND)
