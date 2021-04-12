@@ -102,27 +102,10 @@ public class MlbPipeline {
 
     ValueProvider<String> inputFile = options.getInputFile();
 
-    // Storage storage = StorageOptions.getDefaultInstance().getService();
-
-    // Blob blob = storage.get("mls-bucket", "schema.json");
-    // schema_metadata_json = blob.getContent()
-
-    // Map<String,Object> result = new
-    // ObjectMapper().readValue(schema_metadata_json, HashMap.class);
-
-    // TableSchema schema = new TableSchema().setFields(new
-    // ArrayList<TableFieldSchema>() {
-
-    // private static final long serialVersionUID = 1L;
-    // {
-    // add(new TableFieldSchema().setName("string_field").setType("STRING"));
-    // }
-    // });
-
     String header = "Name,Team,Position,Height(inches),Weight(lbs),Age";
 
     p.apply("Read Players from CSV in bucket", TextIO.read().from(inputFile))
-        // .apply("Remove header row", Filter.by((String row) -> !(row.startsWith("\"Name\","))))
+        .apply("Remove header row", Filter.by((String row) -> !(row.startsWith("\"Name\","))))
         .apply("Remove empty rows", Filter.by((new SerializableFunction<String, Boolean>() {
           private static final long serialVersionUID = 1L;
 
@@ -149,18 +132,14 @@ public class MlbPipeline {
             Double weight = parseDouble(split[4]);
             Double age = parseDouble(split[5]);
 
-            Player player = new Player(name, team, position, height, weight, age);
-            ctx.output(player.getTeam() + "," + player.toString());
+            // Player player = new Player(name, team, position, height, weight, age);
+            ctx.output(name + ","+ team + ","+ position+","+height+","+weight+","+age);
           }
-        })).apply("ConverToBqRow", ParDo.of(new StringToRowConverter(header)))
-           .apply("WriteToBq", BigQueryIO.writeTableRows().to(options.getOutputTable())
-                                                          .withWriteDisposition(WriteDisposition.WRITE_APPEND)
-                                                          // .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED).withSchema(schema));
-                                                          .withCreateDisposition(CreateDisposition.CREATE_NEVER)
-                                                          .withoutValidation());
-    // .apply("Write Result1", TextIO.write().to("gs://mlb_results1"));
+        })).apply("ConverToBqRow", ParDo.of(new StringToRowConverter(header))).apply("WriteToBq",
+            BigQueryIO.writeTableRows().to(options.getOutputTable()).withWriteDisposition(WriteDisposition.WRITE_APPEND)
+                .withCreateDisposition(CreateDisposition.CREATE_NEVER).withoutValidation());
 
-    // Check pipeline status
+    // .apply("Write Result1", TextIO.write().to("gs://mlb_results1"));
     p.run();
   }
 
