@@ -1,10 +1,26 @@
 package org.apache.beam.examples;
 
+import java.io.BufferedReader;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.nio.channels.Channels;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+
+import com.google.api.services.bigquery.model.TableFieldSchema;
+import com.google.api.services.bigquery.model.TableSchema;
+import com.google.cloud.ReadChannel;
+import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.StorageOptions;
 
 import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.io.TextIO;
+import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO;
+import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO.Write.CreateDisposition;
+import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO.Write.WriteDisposition;
 import org.apache.beam.sdk.options.Description;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.options.ValueProvider;
@@ -13,7 +29,7 @@ import org.apache.beam.sdk.transforms.Filter;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.SerializableFunction;
 
-// mvn compile exec:java -Dexec.mainClass=org.apache.beam.examples.MlbPipeline -Dexec.args="--runner=DataflowRunner --project=exemplary-works-305313 --stagingLocation=gs://beambinaries/staging --templateLocation=gs://beambinaries/templates/customTemplate1 --region=europe-west6 --input=default"
+// mvn compile exec:java -Dexec.mainClass=org.apache.beam.examples.MlbPipeline -Dexec.args="--runner=DataflowRunner --project=exemplary-works-305313 --stagingLocation=gs://beambinaries/staging --templateLocation=gs://beambinaries/templates/customTemplateBQ --region=europe-west6 --input=default"
 
 public class MlbPipeline {
 
@@ -26,11 +42,11 @@ public class MlbPipeline {
     void setInputFile(ValueProvider<String> value);
   }
 
-  public static void main(String[] args) {
+  public static void main(String[] args) throws IOException {
     runPipeline(args);
   }
 
-  public static void runPipeline(String[] args) {
+  public static void runPipeline(String[] args) throws IOException {
 
     HashMap<String, String> names = new HashMap<>();
     names.put("BAL", "Orioles");
@@ -89,6 +105,7 @@ public class MlbPipeline {
     // bucket",TextIO.read().from("gs://mls-bucket/mlb_players.csv"))
 
     ValueProvider<String> inputFile = options.getInputFile();
+    TableSchema schema = getTableSchema(inputFile);
 
     p.apply("Read Players from CSV in bucket", TextIO.read().from(inputFile))
         .apply("Remove header row", Filter.by((String row) -> !(row.startsWith("\"Name\","))))
@@ -119,12 +136,40 @@ public class MlbPipeline {
             Double age = parseDouble(split[5]);
 
             Player player = new Player(name, team, position, height, weight, age);
-            ctx.output(player.getTeam() + "---->" + player.toString());
+            ctx.output(player.getTeam() + "," + player.toString());
           }
-        })).apply("Write Result1", TextIO.write().to("gs://mlb_results1"));
+        })).apply("ConverToBqRow", ParDo.of(new StringToRowConverter(schema))).apply("WriteToBq",
+            BigQueryIO.writeTableRows().to(options.getProject() + "DF_TEST.dataflow_table")
+                .withWriteDisposition(WriteDisposition.WRITE_APPEND)
+                .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED).withSchema(schema));
+    // .apply("Write Result1", TextIO.write().to("gs://mlb_results1"));
 
     // Check pipeline status
     p.run().waitUntilFinish();
+  }
+
+  private static TableSchema getTableSchema(ValueProvider<String> inputFile) throws IOException {
+
+    Storage storage = StorageOptions.getDefaultInstance().getService();
+    Blob blob = storage.get("mls-bucket", "mlb_players.csv");
+    
+    if (blob==null){
+      throw new FileNotFoundException("mls-bucket/mlb_players.csv");
+    }
+
+    ReadChannel readChannel = blob.reader();
+
+    BufferedReader br = new BufferedReader(Channels.newReader(readChannel, "UTF-8"));
+    String[] header = br.readLine().split(",");
+    br.close();
+
+    List<TableFieldSchema> fields = new ArrayList<>();
+
+    for (String s : header) {
+      fields.add(new TableFieldSchema().setName(s).setType("STRING"));
+    }
+
+    return new TableSchema().setFields(fields);
   }
 
   private static double parseDouble(String s) {
