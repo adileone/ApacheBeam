@@ -1,19 +1,7 @@
 package org.apache.beam.examples;
 
-import java.io.BufferedReader;
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.nio.channels.Channels;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
-
-import com.google.api.services.bigquery.model.TableFieldSchema;
-import com.google.api.services.bigquery.model.TableSchema;
-import com.google.cloud.ReadChannel;
-import com.google.cloud.storage.Blob;
-import com.google.cloud.storage.Storage;
-import com.google.cloud.storage.StorageOptions;
 
 import org.apache.beam.runners.dataflow.options.DataflowPipelineOptions;
 import org.apache.beam.sdk.Pipeline;
@@ -21,6 +9,7 @@ import org.apache.beam.sdk.io.TextIO;
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO;
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO.Write.CreateDisposition;
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryIO.Write.WriteDisposition;
+import org.apache.beam.sdk.options.Default;
 import org.apache.beam.sdk.options.Description;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.options.ValueProvider;
@@ -36,10 +25,17 @@ public class MlbPipeline {
   public interface MyOptions extends DataflowPipelineOptions {
 
     @Description("Path of the file to read from")
-    // @Default.String("gs://mls-bucket/mlb_players.csv")
+    @Default.String("default Output")
     ValueProvider<String> getInputFile();
 
     void setInputFile(ValueProvider<String> value);
+
+    @Description("BigQuery output table")
+    @Default.String("default Output")
+    ValueProvider<String> getOutputTable();
+
+    void setOutputTable(ValueProvider<String> value);
+
   }
 
   public static void main(String[] args) throws IOException {
@@ -105,10 +101,28 @@ public class MlbPipeline {
     // bucket",TextIO.read().from("gs://mls-bucket/mlb_players.csv"))
 
     ValueProvider<String> inputFile = options.getInputFile();
-    TableSchema schema = getTableSchema(inputFile);
+
+    // Storage storage = StorageOptions.getDefaultInstance().getService();
+
+    // Blob blob = storage.get("mls-bucket", "schema.json");
+    // schema_metadata_json = blob.getContent()
+
+    // Map<String,Object> result = new
+    // ObjectMapper().readValue(schema_metadata_json, HashMap.class);
+
+    // TableSchema schema = new TableSchema().setFields(new
+    // ArrayList<TableFieldSchema>() {
+
+    // private static final long serialVersionUID = 1L;
+    // {
+    // add(new TableFieldSchema().setName("string_field").setType("STRING"));
+    // }
+    // });
+
+    String header = "Name,Team,Position,Height(inches),Weight(lbs),Age";
 
     p.apply("Read Players from CSV in bucket", TextIO.read().from(inputFile))
-        .apply("Remove header row", Filter.by((String row) -> !(row.startsWith("\"Name\","))))
+        // .apply("Remove header row", Filter.by((String row) -> !(row.startsWith("\"Name\","))))
         .apply("Remove empty rows", Filter.by((new SerializableFunction<String, Boolean>() {
           private static final long serialVersionUID = 1L;
 
@@ -138,39 +152,43 @@ public class MlbPipeline {
             Player player = new Player(name, team, position, height, weight, age);
             ctx.output(player.getTeam() + "," + player.toString());
           }
-        })).apply("ConverToBqRow", ParDo.of(new StringToRowConverter(schema))).apply("WriteToBq",
-            BigQueryIO.writeTableRows().to(options.getProject() + "DF_TEST.dataflow_table")
-                .withWriteDisposition(WriteDisposition.WRITE_APPEND)
-                .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED).withSchema(schema));
+        })).apply("ConverToBqRow", ParDo.of(new StringToRowConverter(header)))
+           .apply("WriteToBq", BigQueryIO.writeTableRows().to(options.getOutputTable())
+                                                          .withWriteDisposition(WriteDisposition.WRITE_APPEND)
+                                                          // .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED).withSchema(schema));
+                                                          .withCreateDisposition(CreateDisposition.CREATE_NEVER)
+                                                          .withoutValidation());
     // .apply("Write Result1", TextIO.write().to("gs://mlb_results1"));
 
     // Check pipeline status
-    p.run().waitUntilFinish();
+    p.run();
   }
 
-  private static TableSchema getTableSchema(ValueProvider<String> inputFile) throws IOException {
+  // private static TableSchema getTableSchema(ValueProvider<String> inputFile)
+  // throws IOException {
 
-    Storage storage = StorageOptions.getDefaultInstance().getService();
-    Blob blob = storage.get("mls-bucket", "mlb_players.csv");
-    
-    if (blob==null){
-      throw new FileNotFoundException("mls-bucket/mlb_players.csv");
-    }
+  // Storage storage = StorageOptions.getDefaultInstance().getService();
+  // Blob blob = storage.get("mls-bucket", "schema.json");
 
-    ReadChannel readChannel = blob.reader();
+  // if (blob==null){
+  // throw new FileNotFoundException("mls-bucket/mlb_players.csv");
+  // }
 
-    BufferedReader br = new BufferedReader(Channels.newReader(readChannel, "UTF-8"));
-    String[] header = br.readLine().split(",");
-    br.close();
+  // ReadChannel readChannel = blob.reader();
 
-    List<TableFieldSchema> fields = new ArrayList<>();
+  // BufferedReader br = new BufferedReader(Channels.newReader(readChannel,
+  // "UTF-8"));
+  // String[] header = br.readLine().split(",");
+  // br.close();
 
-    for (String s : header) {
-      fields.add(new TableFieldSchema().setName(s).setType("STRING"));
-    }
+  // List<TableFieldSchema> fields = new ArrayList<>();
 
-    return new TableSchema().setFields(fields);
-  }
+  // for (String s : header) {
+  // fields.add(new TableFieldSchema().setName(s).setType("STRING"));
+  // }
+
+  // return new TableSchema().setFields(fields);
+  // }
 
   private static double parseDouble(String s) {
     try {
