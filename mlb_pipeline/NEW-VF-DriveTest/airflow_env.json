@@ -1,7 +1,0 @@
-{
-	"bucket_path": "mls-bucket",
-	"project_id": "exemplary-works-305313",
-	"gce_zone": "europe-west6-a",
-	"gce_region": "europe-west6",
-	"topic_id": "domain_topic"
-}
