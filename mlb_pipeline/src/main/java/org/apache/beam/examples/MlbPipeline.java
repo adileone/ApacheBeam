@@ -18,20 +18,20 @@ import org.apache.beam.sdk.transforms.Filter;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.SerializableFunction;
 
-// mvn compile exec:java -Dexec.mainClass=org.apache.beam.examples.MlbPipeline -Dexec.args="--runner=DataflowRunner --project=exemplary-works-305313 --stagingLocation=gs://beambinaries/staging --templateLocation=gs://beambinaries/templates/customTemplateBQ --region=europe-west6 --input=default"
+// mvn clean && mvn install && mvn compile exec:java -Dexec.mainClass=org.apache.beam.examples.MlbPipeline -Dexec.args="--runner=DataflowRunner --project=exemplary-works-305313 --stagingLocation=gs://beambinaries/staging --templateLocation=gs://beambinaries/templates/customTemplateBQTest12 --region=europe-west6" -Pdataflow-runner
 
 public class MlbPipeline {
 
   public interface MyOptions extends DataflowPipelineOptions {
 
     @Description("Path of the file to read from")
-    @Default.String("default Output")
-    ValueProvider<String> getInputFile();
+    @Default.String("default")
+    ValueProvider<String> getPlayers();
 
-    void setInputFile(ValueProvider<String> value);
+    void setPlayers(ValueProvider<String> value);
 
     @Description("BigQuery output table")
-    @Default.String("default Output")
+    @Default.String("project:dataset.table")
     ValueProvider<String> getOutputTable();
 
     void setOutputTable(ValueProvider<String> value);
@@ -100,7 +100,7 @@ public class MlbPipeline {
     // p.apply("Read Players from CSV in
     // bucket",TextIO.read().from("gs://mls-bucket/mlb_players.csv"))
 
-    ValueProvider<String> inputFile = options.getInputFile();
+    ValueProvider<String> inputFile = options.getPlayers();
 
     String header = "Name,Team,Position,Height,Weight,Age";
 
@@ -135,11 +135,12 @@ public class MlbPipeline {
             Player player = new Player(name, team, position, height, weight, age);
             ctx.output(player.getName()+","+player.getTeam()+","+player.getPosition()+","+player.getHeight()+","+player.getWeight()+","+player.getAge());
           }
-        })).apply("ConverToBqRow", ParDo.of(new StringToRowConverter(header))).apply("WriteToBq",
+        }))
+        .apply("ConverToBqRow", ParDo.of(new StringToRowConverter(header))).apply("WriteToBq",
             BigQueryIO.writeTableRows().to(options.getOutputTable()).withWriteDisposition(WriteDisposition.WRITE_APPEND)
                 .withCreateDisposition(CreateDisposition.CREATE_NEVER).withoutValidation());
 
-    // .apply("Write Result1", TextIO.write().to("gs://mlb_results1"));
+    // .apply("Write Result1", TextIO.write().to("gs://beambinaries/output"));
     p.run();
   }
 
